@@ -64,7 +64,7 @@ sub parse{
 
    if($gcode =~ /T(\d+)/){ $result->{toolnumber}         = $1 }
    if($gcode =~ /M.*?6/){  $result->{toolchange}         = $TRUE }
-   if($gcode =~ /G[0]+0/){  $result->{fastmove}           = $TRUE }
+   if($gcode =~ /G[0]+0/){ $result->{fastmove}           = $TRUE }
    if($gcode =~ /G.*?1/){  $result->{feedmove}           = $TRUE }
    if($gcode =~ /G.*?4/){  $result->{pause}              = $TRUE }
    if($gcode =~ /M.*?3/){  $result->{spindle_forward}    = $TRUE }
