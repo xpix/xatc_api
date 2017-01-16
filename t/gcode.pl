@@ -28,5 +28,7 @@ $gcodetext = [
 ];
 
 p $gcodetext;
+
+my $r = $g->parse( $g->dwell(0.4) ); p $r;
    
 exit;   
