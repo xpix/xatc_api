@@ -16,17 +16,30 @@ under(sub {
     return 1;
 });
 
+helper xatc => sub {
+   my($self, $toolnumber, $replace) = @_;
+   $self->error("No toolnumber found") unless $toolnumber;
+   my $model = $gobj->model('xatcv3');
+
+};
+
+
 helper replace => sub {
    my($self, $gcode) = @_;
-   die "No parsable gcode found" unless $gcode;
+   $self->error("No parsable gcode found") unless $gcode;
 
    if(my $toolnumber = $gobj->parse($gcode)->{toolnumber}){
-      #return $self->xatc($toolnumber);
+      return $self->xatc($toolnumber, 0);
    } else {
-      return {error => "Can't parse this gcode: $gcode"};
+      return $self->error("Can't parse this gcode: $gcode");
    }
    return {};
 };
+
+helper error => sub {
+   my($self, $error) = @_;
+    return {error => $error};
+}
 
 # Anything works, a long as it's GET and POST
 any ['GET', 'POST'] => '/v1/time' => sub {
