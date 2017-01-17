@@ -76,11 +76,13 @@ sub parse{
 
 sub G { my ($self, $numeric) = @_; return sprintf('G%02d ', $numeric) } # G01, G04 G00
 sub M { my ($self, $numeric) = @_; return sprintf('M%02d ', $numeric)  } # M3, M119
-sub X { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('X%.4f ', $numeric) : '') } # X0.1234
-sub Y { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('Y%.4f ', $numeric) : '') } # Y0.1234
-sub Z { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('Z%.4f ', $numeric) : '') } # Z0.1234
-sub A { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('A%.4f ', $numeric) : '') } # A0.1234
-sub P { my ($self, $numeric) = @_; return sprintf('P%.4f ', $numeric) } # P0.1234
+sub X { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('X%.3f ', $numeric) : '') } # X0.1234
+sub Y { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('Y%.3f ', $numeric) : '') } # Y0.1234
+sub Z { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('Z%.3f ', $numeric) : '') } # Z0.1234
+sub A { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('A%.3f ', $numeric) : '') } # A0.1234
+sub R { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('R%.2f ', $numeric) : '') } # R0.12
+sub F { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('F%d ',   $numeric) : '') } # F500
+sub P { my ($self, $numeric) = @_; return sprintf('P%.3f ', $numeric) } # P0.1234
 sub S { my ($self, $numeric) = @_; return sprintf('S%d ', $numeric) } # S12000
 
 sub fast {
@@ -92,12 +94,13 @@ sub fast {
 }
 
 sub move {
-   my ($self, $x, $y, $z) = @_;
+   my ($self, $x, $y, $z, $feed) = @_;
    return 
       $self->G(1) 
       . $self->X($x) 
       . $self->Y($y) 
-      . $self->Z($z);
+      . $self->Z($z),
+      . $self->F($feed);
 }
 
 sub dwell {
@@ -106,28 +109,49 @@ sub dwell {
 }
 
 sub forward {
-   my ($self, $numeric) = @_;
-   return $self->M(3) . $self->S($numeric);
+   my ($self, $numeric, $time) = @_;
+   my @ret = ( $self->M(3) . $self->S($numeric) );
+   if(defined $time){
+      push(@ret, $self->break($time));
+   }
+   return @ret;
 }
 
 sub backward {
-   my ($self, $numeric) = @_;
-   return $self->M(4) . $self->S($numeric);
+   my ($self, $numeric, $time) = @_;
+   my @ret = ( $self->M(4) . $self->S($numeric) );
+   if(defined $time){
+      push(@ret, $self->break($time));
+   }
+   return @ret;
 }
 
 sub break {
-   my ($self) = @_;
-   return $self->M(5);
+   my ($self, $time) = @_;
+   my @ret = ();
+   if(defined $time){
+      push(@ret, $self->dwell($time));
+   }
+   push(@ret, $self->M(5));
+   return @ret;
 }
 
 sub jitter {
    my ($self, $rpm, $time) = @_;
    return 
-      $self->comment("jitter with ${rpm}rpm and timeout: ${time}sec"),
-      $self->forward($rpm),
-      $self->dwell($time),
-      $self->backward($rpm),
-      $self->dwell($time);
+      $self->comment("    jitter with ${rpm}rpm and timeout: ${time}sec"),
+      $self->forward(   $rpm, $time*0.001 ),
+      $self->backward(  $rpm, $time*0.001 ),
+}
+
+sub servo {
+   my ($self, $angle) = @_;
+   return $self->G(1) . $self->A($angle); # TODO: recalculate angle? 
+}
+
+sub wcs {
+   my ($self, $wcs) = @_;
+   return $self->G($wcs || $self->{wcs}); 
 }
 
 sub comment {
@@ -135,13 +159,11 @@ sub comment {
    return sprintf('( %s ) ', $message);
 }
 
-
-
 sub model {
    my ($self, $model) = @_;
 
    my $models = {
-     'xatcv3' => {
+     'xatcv2' => {
          wcs    => 59,
          holder => [
             # Data for XATC 0.2 without(!) Gator Grips 
@@ -153,8 +175,8 @@ sub model {
             {posX =>       0,  posY =>  53.50, posZ => 5,   tourque => 12000, time => 500, deg=> 90},   # 4. endmill holder
          ],
          atcParameters => {
-            slow =>          30,   # value for minimum rpm
-            fast =>         400,   # value for maximum rpm
+            slow =>        1000,   # value for minimum rpm
+            fast =>       12000,   # value for maximum rpm
             safetyHeight =>  40,   # safety height
             feedRate =>      300,  # Feedrate to move to screw position
             nutZ =>          -5,   # safety deep position of collet in nut
@@ -165,11 +187,12 @@ sub model {
             jitter =>{
                z =>       -4,      # Position to start jitter
                speed =>  200,      # Power to jitter (means rotate X ms in every direction)
-               time =>   15,       # time to jitter on every direction
+               time =>   15,       # time in ms to jitter on every direction
             },
          },
          carousel =>{
             enabled => $TRUE,
+            center => { r => 53.50 },
             servo => { 
                # please test with ./blocktest.js to find perfect parameters
                block =>   125,   # arc in degress to block the spindle shaft 
@@ -193,6 +216,8 @@ sub model {
          },
      } 
    };
+   
+   return $models->{$model};
 }
 
 
