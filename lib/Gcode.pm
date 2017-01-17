@@ -123,11 +123,18 @@ sub break {
 sub jitter {
    my ($self, $rpm, $time) = @_;
    return 
+      $self->comment("jitter with ${rpm}rpm and timeout: ${time}sec"),
       $self->forward($rpm),
       $self->dwell($time),
       $self->backward($rpm),
       $self->dwell($time);
 }
+
+sub comment {
+   my ($self, $message) = @_;
+   return sprintf('( %s ) ', $message);
+}
+
 
 
 
