@@ -159,6 +159,11 @@ sub comment {
    return sprintf('( %s ) ', $message);
 }
 
+sub config {
+   my ($self, $model) = @_;
+   return $self->model($model);
+}
+
 sub model {
    my ($self, $model) = @_;
 

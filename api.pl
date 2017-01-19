@@ -3,7 +3,14 @@ use Mojo::Util qw(secure_compare);
 
 use lib "./lib";
 use Gcode;
+use File::Basename qw(dirname);
+use Data::Dumper;
+use Data::UUID;
+use Hash::Merge::Simple qw/ merge /; 
+use Mojo::JSON;
 
+my $BIN = dirname($0);
+$Data::Dumper::Purity = 1;
 use constant PI    => 4 * atan2(1, 1);
 
 my $gobj = Gcode->new({});
@@ -26,9 +33,55 @@ any ['GET', 'POST'] => '/v1/time' => sub {
 # Parse gcode line and get XATC Gcode as relpace
 any ['GET', 'POST'] => '/xatc/replace/:gcode/:oldtool' => sub {
     my $self = shift;
-    my $gcode = $self->stash('gcode') or die "No Gcode parameter";
+    my $gcode = $self->stash('gcode') or return $self->error("No gcode parameter");
     my $oldtool = $self->stash('oldtool') || 0;
     $self->render(json => { replace => $self->replace($gcode, $oldtool) });
+};
+
+# Parse gcode line and get XATC Gcode as relpace
+get '/config/:model' => sub {
+    my $self = shift;
+    my $model = $self->stash('model') or return $self->error("No model parameter");
+
+    $self->render(json => { config => $gobj->config($model) });
+};
+
+post '/config/:model' => sub {
+    my $self = shift;
+    my $model = $self->stash('model') or return $self->error("No model parameter");
+    my $modeldata = $gobj->config($model);
+
+    my $json = Mojo::JSON->new;
+    my $userdata  = $json->decode($self->req->body) || '{}'
+      or die "No config data to change";
+warn Dumper($self->req->body, $userdata);
+
+    my $merged = merge $userdata, $modeldata;
+
+    my $obj=Data::UUID->new();
+    my $uuid = $obj->to_string( $obj->create() );
+    my $filename = $uuid.'.cfg';
+    $self->save($filename, $merged);
+    
+    $self->render(json => { uuid => $uuid, config => $merged });
+};
+
+helper load => sub{
+   my ($self, $filename) = @_;
+   my $config;
+   open (FILE, "< $BIN/data/$filename") or die "$!";
+   undef $/;                        # read in file all at once
+   eval <FILE>;                     # recreate $config
+   die "can't recreate data from $filename: $@" if $@;
+   close FILE or die "can't close : $!";
+   return $config;
+};
+
+helper save => sub{
+   my ($self, $filename, $config) = @_;
+   open (FILE, "> $BIN/data/$filename") or die "$!";
+   print FILE Data::Dumper->Dump([$config], ['*config']);
+   close FILE or die "$!";   
 };
 
 helper replace => sub {
@@ -165,9 +218,26 @@ __DATA__
 <pre>
 Try: 
 
+   # Replace M6 TX command
     $ curl -v -X GET    http://xpix.eu:8080/xatc/replace/M6%20T6/4
     $ curl -v -X POST   http://xpix.eu:8080/xatc/replace/M6 T6/3
 
-    All except the last should work.
+   # Get config for model, change some parameter's and send this back via POST process. 
+   # Then you receive a personal Unique number, use this to get your personal xatc config
+
+    # get global config
+    $ curl -v -X GET    http://xpix.eu:8080/config/xatcv2      
+      # answer
+      { "config":{"holder": ...} } 
+
+    # change some parameters and save as personal configuration
+    $ curl -v -H "Content-Type: application/json" -X POST -d '{"config":{"touchprobe":{"servo":150}}}'  http://xpix.eu:8080/config/xatcv2
+      # Answer with changed config and uuid
+      {"uuid":"8085B040-DE56-11E6-9D98-CFBEEDACD0C7","config":{"holder": ...}}
+
+    # get changed personal configuration via UUID
+    $ curl -v -X GET   http://xpix.eu:8080/config/8085B040-DE56-11E6-9D98-CFBEEDACD0C7
+      {"uuid":"8085B040-DE56-11E6-9D98-CFBEEDACD0C7","config":{"holder": ...}}
+
 </pre>
 
