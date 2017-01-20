@@ -14,6 +14,7 @@ $Data::Dumper::Purity = 1;
 use constant PI    => 4 * atan2(1, 1);
 
 my $gobj = Gcode->new({});
+my $json = Mojo::JSON->new;
 
 # App instructions
 get '/' => qw(index);
@@ -43,7 +44,13 @@ get '/config/:model' => sub {
     my $self = shift;
     my $model = $self->stash('model') or return $self->error("No model parameter");
 
-    $self->render(json => { config => $gobj->config($model) });
+    if($model !~ /\-/){
+      $self->render(json => { config => $gobj->config($model) });
+    }
+    else{ # model == uuid
+      $self->render(json => { config => $self->load($model) });
+    }
+
 };
 
 post '/config/:model' => sub {
@@ -51,10 +58,8 @@ post '/config/:model' => sub {
     my $model = $self->stash('model') or return $self->error("No model parameter");
     my $modeldata = $gobj->config($model);
 
-    my $json = Mojo::JSON->new;
     my $userdata  = $json->decode($self->req->body) || '{}'
       or die "No config data to change";
-warn Dumper($self->req->body, $userdata);
 
     my $merged = merge $userdata, $modeldata;
 
@@ -68,13 +73,14 @@ warn Dumper($self->req->body, $userdata);
 
 helper load => sub{
    my ($self, $filename) = @_;
-   my $config;
-   open (FILE, "< $BIN/data/$filename") or die "$!";
+   my %config;
+   open (FILE, "< $BIN/data/${filename}.cfg") or die "$!";
    undef $/;                        # read in file all at once
    eval <FILE>;                     # recreate $config
    die "can't recreate data from $filename: $@" if $@;
    close FILE or die "can't close : $!";
-   return $config;
+warn Dumper(\%config);
+   return $json->encode(\%config);
 };
 
 helper save => sub{
