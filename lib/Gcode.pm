@@ -42,6 +42,7 @@ package Gcode;
 use strict;
 use warnings;
 use DDP;
+use Data::Dumper;
 
 my $TRUE = 1;
 
@@ -166,64 +167,28 @@ sub config {
 
 sub model {
    my ($self, $model) = @_;
-
-   my $models = {
-     'xatcv2' => {
-         wcs    => 59,
-         holder => [
-            # Data for XATC 0.2 without(!) Gator Grips 
-            # Center Position holder, catch height, tighten val, tighten ms,    deg
-            # ---------------|----------------|----------|-------------------|------------|------
-            {posX =>   53.50,  posY =>  0,     posZ => 5,   tourque => 12000, time => 500, deg=> 360},  # 1. endmill holder
-            {posX =>       0,  posY => -53.50, posZ => 5,   tourque => 12000, time => 500, deg=> 270},  # 2, endmill holder
-            {posX =>  -53.50,  posY =>  0,     posZ => 5,   tourque => 12000, time => 500, deg=> 180},  # 3. endmill holder
-            {posX =>       0,  posY =>  53.50, posZ => 5,   tourque => 12000, time => 500, deg=> 90},   # 4. endmill holder
-         ],
-         atcParameters => {
-            slow =>        1000,   # value for minimum rpm
-            fast =>       12000,   # value for maximum rpm
-            safetyHeight =>  40,   # safety height
-            feedRate =>      300,  # Feedrate to move to screw position
-            nutZ =>          -5,   # safety deep position of collet in nut
-            loose =>{               
-               speed => 200,       # after unscrew the collet,  params to rotate the spindle shaft with X speed ... 
-               time =>   50,       # ... for X time (in milliseconds) to loose the collet complete
-            },
-            jitter =>{
-               z =>       -4,      # Position to start jitter
-               speed =>  200,      # Power to jitter (means rotate X ms in every direction)
-               time =>   15,       # time in ms to jitter on every direction
-            },
-         },
-         carousel =>{
-            enabled => $TRUE,
-            center => { r => 53.50 },
-            servo => { 
-               # please test with ./blocktest.js to find perfect parameters
-               block =>   125,   # arc in degress to block the spindle shaft 
-               unblock => 60,    # arc in degress to deblock the spindle shaft 
-               touch =>   100,   # arc in degress to touch the spindle shaft for touch probe
-               level =>   2500,  # level in mA to break spindle at ~2.5 Ampere
-            }, # position values are in degress
-            catchDegrees =>  15, # in screw mode => degrees for opposite direction to catch the collet
-                                 # 0 means no opposite move
-            torqueDegrees => 50, # IMPORTANT => maximum arc degrees to torque collet 
-                                 # This value set the maximum torque on  ER-collet-nut, too high 
-                                 # values can result in loose steps of motors or destroy your machine
-         },
-         touchprobe =>{
-            position => {x =>5, y =>-5},
-            enabled => $TRUE,
-            servo => 130,       # Angel to connect Spindle shaft for sure!
-            feedrate => 150,    # Feedrate for touch probe
-            thick => 0.035,     # thick of probe (copper tape or other)
-            secure_height => 2, # move to this z-height after probing
-         },
-     } 
-   };
-   
-   return $models->{$model};
+   return $self->load($model);
 }
+
+sub load {
+   my ($self, $filename) = @_;
+   my %config;
+   my $BIN = $self->{bin};
+   open (FILE, "< $BIN/data/${filename}.cfg") or die "$!";
+   undef $/;                        # read in file all at once
+   eval <FILE>;                     # recreate $config
+   die "can't recreate data from $filename: $@" if $@;
+   close FILE or die "can't close : $!";
+   return \%config;
+};
+
+sub save {
+   my ($self, $filename, $config) = @_;
+   my $BIN = $self->{bin};
+   open (FILE, "> $BIN/data/$filename") or die "$!";
+   print FILE Data::Dumper->Dump([$config], ['*config']);
+   close FILE or die "$!";   
+};
 
 
 1;

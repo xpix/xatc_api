@@ -13,8 +13,8 @@ my $BIN = dirname($0);
 $Data::Dumper::Purity = 1;
 use constant PI    => 4 * atan2(1, 1);
 
-my $gobj = Gcode->new({});
 my $json = Mojo::JSON->new;
+my $gobj = Gcode->new({bin => $BIN});
 
 # App instructions
 get '/' => qw(index);
@@ -32,11 +32,15 @@ any ['GET', 'POST'] => '/v1/time' => sub {
 };
 
 # Parse gcode line and get XATC Gcode as relpace
-any ['GET', 'POST'] => '/xatc/replace/:gcode/:oldtool' => sub {
+any ['GET', 'POST'] => '/xatc/replace/:model/:gcode/:oldtool' => sub {
     my $self = shift;
-    my $gcode = $self->stash('gcode') or return $self->error("No gcode parameter");
-    my $oldtool = $self->stash('oldtool') || 0;
-    $self->render(json => { replace => $self->replace($gcode, $oldtool) });
+    my $gcode     = $self->stash('gcode') or return $self->error("No gcode parameter");
+    my $oldtool   = $self->stash('oldtool') || 0;
+    my $model     = $self->stash('model') or return $self->error("No model parameter");
+
+    my $config = $self->config($model);
+      
+    $self->render(json => { replace => $self->replace($config, $gcode, $oldtool) });
 };
 
 # Parse gcode line and get XATC Gcode as relpace
@@ -44,13 +48,7 @@ get '/config/:model' => sub {
     my $self = shift;
     my $model = $self->stash('model') or return $self->error("No model parameter");
 
-    if($model !~ /\-/){
-      $self->render(json => { config => $gobj->config($model) });
-    }
-    else{ # model == uuid
-      $self->render(json => { config => $self->load($model) });
-    }
-
+    $self->render(json => { config => $self->config($model) });
 };
 
 post '/config/:model' => sub {
@@ -61,41 +59,32 @@ post '/config/:model' => sub {
     my $userdata  = $json->decode($self->req->body) || '{}'
       or die "No config data to change";
 
-    my $merged = merge $userdata, $modeldata;
+    my $merged = merge $userdata, $modeldata->{config};
 
     my $obj=Data::UUID->new();
     my $uuid = $obj->to_string( $obj->create() );
     my $filename = $uuid.'.cfg';
-    $self->save($filename, $merged);
+    $gobj->save($filename, $merged);
     
     $self->render(json => { uuid => $uuid, config => $merged });
 };
 
-helper load => sub{
-   my ($self, $filename) = @_;
-   my %config;
-   open (FILE, "< $BIN/data/${filename}.cfg") or die "$!";
-   undef $/;                        # read in file all at once
-   eval <FILE>;                     # recreate $config
-   die "can't recreate data from $filename: $@" if $@;
-   close FILE or die "can't close : $!";
-warn Dumper(\%config);
-   return $json->encode(\%config);
-};
+helper config => sub{
+   my ($self, $model) = @_;
 
-helper save => sub{
-   my ($self, $filename, $config) = @_;
-   open (FILE, "> $BIN/data/$filename") or die "$!";
-   print FILE Data::Dumper->Dump([$config], ['*config']);
-   close FILE or die "$!";   
+   if($model !~ /\-/){
+      return $gobj->config($model);
+   }
+   # model == uuid
+   return $gobj->load($model);
 };
 
 helper replace => sub {
-   my($self, $gcode, $oldtool) = @_;
+   my($self, $config, $gcode, $oldtool) = @_;
    $self->error("No parsable gcode found") unless $gcode;
 
    if(my $toolnumber = $gobj->parse($gcode)->{toolnumber}){
-      my $list = $self->xatc($toolnumber, $oldtool);
+      my $list = $self->xatc($config, $toolnumber, $oldtool);
       map { $_ =~ s/\s+$//sig } @$list;
       return $list;
    } else {
@@ -105,9 +94,9 @@ helper replace => sub {
 };
 
 helper xatc => sub {
-   my($self, $toolnumber, $oldtoolnumber) = @_;
+   my($self, $cfg, $toolnumber, $oldtoolnumber) = @_;
    $self->error("No toolnumber found") unless $toolnumber;
-   $self->{cfg} = my $cfg = $gobj->model('xatcv2');
+   $self->{cfg} = $cfg;
    my $srv = $cfg->{carousel}->{servo};
 
    my $gcode = [ 
@@ -224,9 +213,9 @@ __DATA__
 <pre>
 Try: 
 
-   # Replace M6 TX command
-    $ curl -v -X GET    http://xpix.eu:8080/xatc/replace/M6%20T6/4
-    $ curl -v -X POST   http://xpix.eu:8080/xatc/replace/M6 T6/3
+   # Replace M6 TX command with xatcv2 model
+    $ curl -v -X GET    http://xpix.eu:8080/xatc/xatcv2/replace/M6%20T6/4
+    $ curl -v -X POST   http://xpix.eu:8080/xatc/xatcv2/replace/M6 T6/3
 
    # Get config for model, change some parameter's and send this back via POST process. 
    # Then you receive a personal Unique number, use this to get your personal xatc config
@@ -244,6 +233,10 @@ Try:
     # get changed personal configuration via UUID
     $ curl -v -X GET   http://xpix.eu:8080/config/8085B040-DE56-11E6-9D98-CFBEEDACD0C7
       {"uuid":"8085B040-DE56-11E6-9D98-CFBEEDACD0C7","config":{"holder": ...}}
+
+    # get replace gcode with personal configuration
+    $ curl -v -X GET   http://xpix.eu:8080/xatc/replace/8085B040-DE56-11E6-9D98-CFBEEDACD0C7/M6%20T6/4 
+      {,"replace":["G01 A60.000", ...]}
 
 </pre>
 
