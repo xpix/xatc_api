@@ -34,14 +34,24 @@ any ['GET', 'POST'] => '/v1/time' => sub {
 # Parse gcode line and get XATC Gcode as relpace
 any ['GET', 'POST'] => '/xatc/replace/:model/:control/:gcode/:oldtool' => sub {
     my $self = shift;
+    my $pure      = $self->param('pure');
     my $gcode     = $self->stash('gcode') or return $self->error("No gcode parameter");
     my $oldtool   = $self->stash('oldtool') || 0;
     my $model     = $self->stash('model') or return $self->error("No model parameter");
     my $control   = $self->stash('control') || 'tinyg';
 
     my $config = $self->config($model, $control);
-      
-    $self->render(json => { replace => $self->replace($config, $gcode, $oldtool) });
+    
+    
+    my $array = $self->replace($config, $gcode, $oldtool);
+    if($pure){
+       $self->render(text => join("\n", @$array));
+    } else {
+       $self->render(json => { 
+         list => $array,
+       });
+    }
+
 };
 
 # Parse gcode line and get XATC Gcode as replace
@@ -112,7 +122,6 @@ helper xatc => sub {
       $gobj->servo($srv->{unblock}),
       $gobj->wcs(),
       $gobj->G(17),
-      $gobj->comment("XATC Moves to get Endmill nr $toolnumber"),
    ];
 
    if($oldtoolnumber and $toolnumber != $oldtoolnumber){
@@ -143,7 +152,7 @@ helper getnewTool => sub {
    my $theta2_back   = 360;
 
    my $gcode = [
-      $g->comment("Get new tool from slot $toolnumber"),
+      $g->comment("XATC GET NEW TOOL WITH NR $toolnumber"),
       $g->comment(" Move to slot position and run spindle slow"),
 
       $g->comment(" Move to slot position"),
@@ -153,11 +162,10 @@ helper getnewTool => sub {
 
       $g->comment(" rotate slow and move down"),
       $g->move( undef, undef, 10, 750 ),
-      $g->break, # stop spindle
-      $g->move( undef, undef, 0.5, 750 ),
+      $g->move( undef, undef, 0, 750 ),
 
-      $g->comment(" Catch endmill with fast forward for short time"),
-      $g->forward( 400, 200 ),
+      #$g->comment(" Catch endmill with fast forward for short time"),
+      #$g->forward( 400, 200 ),
       $g->fast( undef, undef, $atc->{safetyHeight} ),
 
       $g->block( $atc->{slow}, 0.2),
@@ -175,7 +183,7 @@ helper getnewTool => sub {
       $g->unblock( $atc->{slow}, 0.2),
       $self->arc(3, $theta1_back, $theta2_back, 0),
 
-      $g->comment("-------------- END get tool process"),
+      $g->comment("-------------- END -------------------"),
    ];
   
    return $gcode;
@@ -276,8 +284,12 @@ __DATA__
 Try: 
 
    # Replace M6 TX command with xatcv2 model
-    $ curl -v -X GET    http://xpix.eu:8080/xatc/replace/xatcv2/M6%20T6/4
-    $ curl -v -X POST   http://xpix.eu:8080/xatc/replace/xatcv2/M6%20T6/4
+    $ curl -v -X GET    http://xpix.eu:8080/xatc/replace/xatcv2/tinyg/M6%20T6/4
+    $ curl -v -X POST   http://xpix.eu:8080/xatc/replace/xatcv2/tinyg/M6%20T6/4
+    
+   # get gcode as pure text
+    $ curl -v -X GET    http://xpix.eu:8080/xatc/replace/xatcv4/tinyg/M6%20T1/0?pure=1
+      
 
    # Get config for model, change some parameter's and send this back via POST process. 
    # Then you receive a personal Unique number, use this to get your personal xatc config
