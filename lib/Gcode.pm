@@ -100,7 +100,7 @@ sub move {
       $self->G(1) 
       . $self->X($x) 
       . $self->Y($y) 
-      . $self->Z($z),
+      . $self->Z($z)
       . $self->F($feed);
 }
 
@@ -111,7 +111,8 @@ sub dwell {
 
 sub forward {
    my ($self, $numeric, $time) = @_;
-   my @ret = ( $self->M(3) . $self->S($numeric) );
+   my $sp = $self->cfg->{control}{Spindle};
+   my @ret = ( $self->M($sp->{cw}) . $self->S($numeric) );
    if(defined $time){
       push(@ret, $self->break($time));
    }
@@ -120,7 +121,8 @@ sub forward {
 
 sub backward {
    my ($self, $numeric, $time) = @_;
-   my @ret = ( $self->M(4) . $self->S($numeric) );
+   my $sp = $self->cfg->{control}{Spindle};
+   my @ret = ( $self->M($sp->{ccw}) . $self->S($numeric) );
    if(defined $time){
       push(@ret, $self->break($time));
    }
@@ -129,25 +131,55 @@ sub backward {
 
 sub break {
    my ($self, $time) = @_;
+   my $sp = $self->cfg->{control}{Spindle};
    my @ret = ();
    if(defined $time){
       push(@ret, $self->dwell($time));
    }
-   push(@ret, $self->M(5));
+   push(@ret, $self->M($sp->{brk}));
    return @ret;
 }
 
 sub jitter {
    my ($self, $rpm, $time) = @_;
    return 
-      $self->comment("    jitter with ${rpm}rpm and timeout: ${time}sec"),
       $self->forward(   $rpm, $time*0.001 ),
-      $self->backward(  $rpm, $time*0.001 ),
+      $self->backward(  $rpm, $time*0.001 );
 }
 
 sub servo {
-   my ($self, $angle) = @_;
-   return $self->G(1) . $self->A($angle); # TODO: recalculate angle? 
+   my ($self, $status) = @_;
+   my $sv = $self->cfg->{control}{Servo};
+   if(defined $status){
+      return $self->M($sv->{block}); # 
+   }
+   return $self->M($sv->{unblock}); # 
+}
+
+sub block {
+   my ($self, $rpm, $pause) = @_;
+   my $jit = $self->cfg->{atcParameters}{jitter};
+   return 
+      $self->comment('block spindle --'),
+      $self->forward($rpm),              # spindle slow rotate
+      $self->dwell($pause),
+      $self->servo('block'),               # block with servo
+      $self->dwell($pause),
+      $self->jitter($jit->{speed}, $jit->{time}),
+      $self->comment('----------------'),
+      ;  # jitter for accurate block
+                     
+}
+
+sub unblock {
+   my ($self, $rpm, $pause) = @_;
+   my $jit = $self->cfg->{atcParameters}{jitter};
+   return 
+      $self->comment('UN-block spindle --'),
+      $self->servo(),               # unblock with servo
+      $self->dwell($pause),
+      $self->jitter($jit->{speed}, $jit->{time}),  # jitter for accurate unblock
+      $self->comment('----------------');
 }
 
 sub wcs {
@@ -160,9 +192,22 @@ sub comment {
    return sprintf('( %s ) ', $message);
 }
 
+sub cfg {
+   my ($self, $cfg) = @_;
+   $self->{cfg} = $cfg if defined $cfg;
+   $self->{cfg} or die "Unable to find configuration";
+   return $self->{cfg};
+}
+
 sub config {
-   my ($self, $model) = @_;
-   return $self->model($model);
+   my ($self, $model, $control) = @_;
+   my $control_cfg = $self->load($control) 
+      if($control);
+   my $config = $self->model($model);
+   $config->{control} = $control_cfg 
+      if(ref $control_cfg);
+   $self->cfg($config);
+   return $config;
 }
 
 sub model {

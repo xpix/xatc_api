@@ -32,29 +32,34 @@ any ['GET', 'POST'] => '/v1/time' => sub {
 };
 
 # Parse gcode line and get XATC Gcode as relpace
-any ['GET', 'POST'] => '/xatc/replace/:model/:gcode/:oldtool' => sub {
+any ['GET', 'POST'] => '/xatc/replace/:model/:control/:gcode/:oldtool' => sub {
     my $self = shift;
     my $gcode     = $self->stash('gcode') or return $self->error("No gcode parameter");
     my $oldtool   = $self->stash('oldtool') || 0;
     my $model     = $self->stash('model') or return $self->error("No model parameter");
+    my $control   = $self->stash('control') || 'tinyg';
 
-    my $config = $self->config($model);
+    my $config = $self->config($model, $control);
       
     $self->render(json => { replace => $self->replace($config, $gcode, $oldtool) });
 };
 
-# Parse gcode line and get XATC Gcode as relpace
-get '/config/:model' => sub {
+# Parse gcode line and get XATC Gcode as replace
+get '/config/:model/:control' => sub {
     my $self = shift;
     my $model = $self->stash('model') or return $self->error("No model parameter");
+    my $control = $self->stash('control') || 'tinyg';
 
-    $self->render(json => { config => $self->config($model) });
+    $self->render(json => { config => $self->config($model, $control) });
 };
 
-post '/config/:model' => sub {
+# Merge and Save user config und return a UUID
+# use can choose his cnc controller (tinyg, grbl, ...)
+post '/config/:model/:control' => sub {
     my $self = shift;
-    my $model = $self->stash('model') or return $self->error("No model parameter");
-    my $modeldata = $gobj->config($model);
+    my $control = $self->stash('control') || 'tinyg';
+    my $model   = $self->stash('model') or return $self->error("No model parameter");
+    my $modeldata = $gobj->config($model, $control);
 
     my $userdata  = $json->decode($self->req->body) || '{}'
       or die "No config data to change";
@@ -70,13 +75,17 @@ post '/config/:model' => sub {
 };
 
 helper config => sub{
-   my ($self, $model) = @_;
+   my ($self, $model, $control) = @_;
 
    if($model !~ /\-/){
-      return $gobj->config($model);
+      my $cfg = $gobj->config($model, $control);
+      $self->Dumper($cfg);
+      return $cfg;
    }
    # model == uuid
-   return $gobj->load($model);
+   my $cfg = $gobj->load($model);
+   $self->Dumper($cfg);
+   return $cfg;
 };
 
 helper replace => sub {
@@ -118,10 +127,64 @@ helper xatc => sub {
 
 helper getnewTool => sub {
    my($self, $cfg, $toolnumber) = @_;
+ 
+   my $g = Gcode->new({bin => $BIN, cfg => $cfg});
+
+   my $atc  = $cfg->{atcParameters};
+   my $slot = $cfg->{holder}->[ $toolnumber-1 ];
+   my $jit  = $atc->{jitter};
+   my $los  = $atc->{loose};
+   my $car  = $cfg->{carousel};
+   my $srv  = $car->{servo};
+
+   my $theta1   = 360;
+   my $theta2   = 360 + $car->{torqueDegrees};
+   my $theta1_back   = 360 - $car->{torqueDegrees};
+   my $theta2_back   = 360;
+
+   my $gcode = [
+      $g->comment("Get new tool from slot $toolnumber"),
+      $g->comment(" Move to slot position and run spindle slow"),
+
+      $g->comment(" Move to slot position"),
+      $g->forward( $atc->{slow} ),
+      $g->fast( undef, undef, $atc->{safetyHeight} ),
+      $g->fast( $slot->{posX}, $slot->{posY} ),
+
+      $g->comment(" rotate slow and move down"),
+      $g->move( undef, undef, 10, 750 ),
+      $g->break, # stop spindle
+      $g->move( undef, undef, 0.5, 750 ),
+
+      $g->comment(" Catch endmill with fast forward for short time"),
+      $g->forward( 400, 200 ),
+      $g->fast( undef, undef, $atc->{safetyHeight} ),
+
+      $g->block( $atc->{slow}, 0.2),
+
+      $g->comment(" Move to wrench position"),
+      $g->fast( 90, -3, $atc->{safetyHeight}),
+      $g->fast( undef, undef, -5 ),
+      $g->move( 60, 0, -5, 500), # catch collet nut
+      
+      # Magic move 
+      $g->comment(" Magic move to screw nut collet"),
+      $self->arc(2, $theta1, $theta2, 0),
+
+      $g->comment(" deblock spindle at end of arc move"),
+      $g->unblock( $atc->{slow}, 0.2),
+      $self->arc(3, $theta1_back, $theta2_back, 0),
+
+      $g->comment("-------------- END get tool process"),
+   ];
+  
+   return $gcode;
 };
 
 helper putoldTool => sub {
    my($self, $cfg, $toolnumber) = @_;
+ 
+   my $gobj = Gcode->new({bin => $BIN, cfg => $cfg});
 
    my $atc  = $cfg->{atcParameters};
    my $slot = $cfg->{holder}->[ $toolnumber-1 ];
@@ -172,7 +235,6 @@ helper arc => sub {
    my($self, $mode, $th1, $th2, $slot) = @_;
 
    my $car  = $self->{cfg}->{carousel}{center};
-$self->Dumper($self->{cfg}{carousel});
    my $radius = $car->{r};
 
    my $theta1 = $th1*(PI/180); # calculate in radians
@@ -214,14 +276,14 @@ __DATA__
 Try: 
 
    # Replace M6 TX command with xatcv2 model
-    $ curl -v -X GET    http://xpix.eu:8080/xatc/xatcv2/replace/M6%20T6/4
-    $ curl -v -X POST   http://xpix.eu:8080/xatc/xatcv2/replace/M6 T6/3
+    $ curl -v -X GET    http://xpix.eu:8080/xatc/replace/xatcv2/M6%20T6/4
+    $ curl -v -X POST   http://xpix.eu:8080/xatc/replace/xatcv2/M6%20T6/4
 
    # Get config for model, change some parameter's and send this back via POST process. 
    # Then you receive a personal Unique number, use this to get your personal xatc config
 
-    # get global config
-    $ curl -v -X GET    http://xpix.eu:8080/config/xatcv2      
+    # get global config for ur XATC Model and specific CNC Controller
+    $ curl -v -X GET    http://xpix.eu:8080/config/xatcv2/tinyg      
       # answer
       { "config":{"holder": ...} } 
 
