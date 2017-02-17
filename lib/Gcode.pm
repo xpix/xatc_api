@@ -75,7 +75,7 @@ sub parse{
    return $result;
 }
 
-sub G { my ($self, $numeric) = @_; return sprintf('G%02d ', $numeric) } # G01, G04 G00
+sub G { my ($self, $numeric) = @_; return ($numeric =~ /\./ ? sprintf('G%02.1f ', $numeric) : sprintf('G%02d ', $numeric)) } # G01, G04, G92.1
 sub M { my ($self, $numeric) = @_; return sprintf('M%02d ', $numeric)  } # M3, M119
 sub X { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('X%.3f ', $numeric) : '') } # X0.1234
 sub Y { my ($self, $numeric) = @_; return (defined $numeric ? sprintf('Y%.3f ', $numeric) : '') } # Y0.1234
