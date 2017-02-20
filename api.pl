@@ -40,15 +40,9 @@ any ['GET', 'POST'] => '/xatc/replace/:model/:control/:gcode/:oldtool' => sub {
     # Automatic Touchprobe failed, cuz Tinyg in build 442.xx has 
     # problem with G38.2 in Gcode and freeze every time
     # Workaround: 
-    #    use chilipeppr to set a macro at position G54 X0 Y0 Z5.43
-    #    move at the end of XATC process to this position and an 
-    #    event start the probing process
+    #    use chilipeppr to set a macro wit command "(chilipeppr_pause PROBE)"
     #    https://github.com/xpix/XATC/blob/master/chilipeppr/macro.js#L790
     my $touch     = $self->param('touch'); 
-    if($touch){
-      die "DON'T use Automatic Touchprobe, cuz Tinyg in build 442.xx has problem with G38.2 in Gcode and freeze every time!";
-    }
-
 
     my $gcode     = $self->stash('gcode') or return $self->error("No gcode parameter");
     my $oldtool   = $self->stash('oldtool') || 0;
@@ -187,11 +181,12 @@ helper getnewTool => sub {
       $g->forward( $atc->{slow} ),
       $g->fast( undef, undef, $atc->{safetyHeight} ),
       $g->fast( $slot->{posX}, $slot->{posY} ),
+      'G28.2 Z0',
 
       $g->comment(" rotate slow and move down"),
-      $g->move( undef, undef, 0, 750 ),
+      $g->move( undef, undef, 0, 1000 ),
       $g->dwell(1),
-      $g->forward( 9000, 0.2 ),
+      $g->forward( 9000, 0.1 ),
       $g->dwell(1),
 
       $g->fast( undef, undef, $atc->{safetyHeight} ),
@@ -263,11 +258,12 @@ helper putoldTool => sub {
       $g->comment(" Move to slot position"),
       $g->fast( undef, undef, $atc->{safetyHeight} ),
       $g->fast( $slot->{posX}, $slot->{posY} ),
+      'G28.2 Z0',
 
       $g->comment(" move down"),
-      $g->move( undef, undef, 0, 750 ),
+      $g->move( undef, undef, -1, 1000 ),
       $g->dwell(1),
-      $g->backward( 9000, 0.2 ),
+      $g->backward( 9000, 0.1 ),
       $g->dwell(1),
       $g->backward( $atc->{slow} ),
 
@@ -294,11 +290,8 @@ helper touchprobe => sub {
       $g->fast(undef, undef, $tcfg->{secure_height}),
 
       $g->comment(" Probing"),
-      'G21',# workaround for G38.2
-      'G38.2 Z-50 F' . $tcfg->{feedrate}, # Touchprobe works just in G53, Z-Zero is on top of z-axis thats why move in positive direction
-      'G92 X'. $tcfg->{position}{x} .' Y'.$tcfg->{position}{y} . ' Z' . $tcfg->{thick},
+      $tcfg->{command},
       $g->fast(0, 0, $tcfg->{secure_height}),
-      # 'G92.1', # back to G54 (have to call AFTER the milling job)
 
       $gobj->dwell(1),
 

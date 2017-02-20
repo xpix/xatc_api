@@ -158,7 +158,13 @@ sub servo {
 
 sub block {
    my ($self, $rpm, $pause) = @_;
-   my $jit = $self->cfg->{atcParameters}{jitter};
+
+   my $atc = $self->cfg->{atcParameters};
+   my $jit = $atc->{jitter};
+
+   $rpm     //=  $atc->{slow};
+   $pause   //= 0.2;
+
    return 
       $self->comment('block spindle --'),
       $self->forward($rpm),              # spindle slow rotate
