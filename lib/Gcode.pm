@@ -44,6 +44,9 @@ use warnings;
 use DDP;
 use Data::Dumper;
 
+use constant PI    => 4 * atan2(1, 1);
+
+
 my $TRUE = 1;
 
 sub new{
@@ -196,6 +199,20 @@ sub wcs {
 sub comment {
    my ($self, $message) = @_;
    return sprintf('( %s ) ', $message);
+}
+
+# --------------- HELPER ------------------
+
+sub calc_center_move {
+   my ($self, $slot) = @_;
+
+   my $radius = $self->cfg->{carousel}{centerRadius};
+   my $winkel = $slot->{deg}*(PI/180); # calculate in radians
+   
+   my $xe   = (0+( $radius * cos($winkel) ));   # Xc+(R*cos(Theta2))
+   my $ye   = (0+( $radius * sin($winkel) ));   # Yc+(R*sin(Theta2))
+
+   return ($xe, $ye)   
 }
 
 sub cfg {

@@ -127,7 +127,6 @@ helper xatc => sub {
    my($self, $cfg, $toolnumber, $oldtoolnumber) = @_;
    $self->error("No toolnumber found") unless $toolnumber;
    $self->{cfg} = $cfg;
-   my $srv = $cfg->{carousel}->{servo};
 
    my $gcode = [ 
       $gobj->G(21),
@@ -182,34 +181,51 @@ helper getnewTool => sub {
       $g->fast( undef, undef, $atc->{safetyHeight} ),
       $g->fast( $slot->{posX}, $slot->{posY} ),
       'G28.2 Z0',
-
-      $g->comment(" rotate slow and move down"),
-      $g->move( undef, undef, 0, 1000 ),
-      $g->dwell(1),
-      $g->forward( 9000, 0.1 ),
-      $g->dwell(1),
-
-      $g->fast( undef, undef, $atc->{safetyHeight} ),
-
-      $g->block( $atc->{slow}, 0.2),
-
-      $g->comment(" Move to wrench position"),
-      $g->fast( 90, -3, $atc->{safetyHeight}),
-      $g->fast( undef, undef, $wrench_z ),
-      $g->move( 60, 0, $wrench_z, 1000), # catch collet nut
-      
-      # Magic move 
-      $g->comment(" Magic move to screw nut collet"),
-      $self->arc(3, $theta1, $theta2, $radius),
-
-      $g->comment(" deblock spindle at end of arc move"),
-      $g->unblock( $atc->{slow}, 0.2),
-      $self->arc(2, $theta1_back, $theta2_back, $radius),
-
-      $g->fast( undef, undef, $atc->{safetyHeight} ),
-
-      $g->comment("-------------- END -------------------"),
    ];
+
+      if($cfg->{version} >= 0.4){
+         # Special process to get endmill with small tourque
+         push(@$gcode, 
+            $g->comment(" special to get endmill shaft and move to center"),
+            $g->fast($slot->{posX}, $slot->{posY}, 20),                 # Move to end of endmill shaft
+            $g->move( undef, undef, $slot->{posZ}, $atc->{feedRate}),   # get endmill shaft
+            $g->move($g->calc_center_move($slot), 
+                        $slot->{posZ}, $atc->{feedRate}),               # move to center
+            $g->dwell($slot->{time}),                                   # short break to screw the nut
+            $g->break(),                                                # stop spindle
+            $g->fast($slot->{posX}, $slot->{posY}, $atc->{safetyHeight}),  # to a security high
+         );
+      } else {
+         push(@$gcode, 
+            $g->comment(" rotate slow and move down"),
+            $g->move( undef, undef, 0, 1000 ),
+            $g->dwell(1),
+            $g->forward( 9000, 0.1 ),
+            $g->dwell(1),
+            $g->fast( undef, undef, $atc->{safetyHeight} ),
+         );
+      }
+
+      push(@$gcode, 
+         $g->block( $atc->{slow}, 0.2),
+
+         $g->comment(" Move to wrench position"),
+         $g->fast( 90, -3, $atc->{safetyHeight}),
+         $g->fast( undef, undef, $wrench_z ),
+         $g->move( 60, 0, $wrench_z, 1000), # catch collet nut
+         
+         # Magic move 
+         $g->comment(" Magic move to screw nut collet"),
+         $self->arc(3, $theta1, $theta2, $radius),
+
+         $g->comment(" deblock spindle at end of arc move"),
+         $g->unblock( $atc->{slow}, 0.2),
+         $self->arc(2, $theta1_back, $theta2_back, $radius),
+
+         $g->fast( undef, undef, $atc->{safetyHeight} ),
+
+         $g->comment("-------------- END -------------------"),
+      );
   
    return $gcode;
 };
