@@ -204,10 +204,9 @@ sub comment {
 # --------------- HELPER ------------------
 
 sub calc_center_move {
-   my ($self, $slot) = @_;
+   my ($self, $degree, $radius) = @_;
 
-   my $radius = $self->cfg->{carousel}{centerRadius};
-   my $winkel = $slot->{deg}*(PI/180); # calculate in radians
+   my $winkel = $degree*(PI/180); # calculate in radians
    
    my $xe   = (0+( $radius * cos($winkel) ));   # Xc+(R*cos(Theta2))
    my $ye   = (0+( $radius * sin($winkel) ));   # Yc+(R*sin(Theta2))

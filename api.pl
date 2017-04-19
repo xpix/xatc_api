@@ -162,10 +162,11 @@ helper getnewTool => sub {
    my $los  = $atc->{loose};
    my $car  = $cfg->{carousel};
    my $srv  = $car->{servo};
+   my $rad  = $cfg->{holder}->[ 0 ]->{posX}; # real radius of first slot
 
-   my $radius = 60;
-   my $torque_degrees = 70;
-   my $wrench_z = -9;
+   my $radius = 60; # radius of tourque circle
+   my $torque_degrees = $car->{torqueDegrees};
+   my $wrench_z = $atc->{nutZ};
    
    my $theta1   = 360;
    my $theta2   = 360 + $torque_degrees;
@@ -180,7 +181,6 @@ helper getnewTool => sub {
       $g->forward( $atc->{slow} ),
       $g->fast( undef, undef, $atc->{safetyHeight} ),
       $g->fast( $slot->{posX}, $slot->{posY} ),
-      'G28.2 Z0',
    ];
 
       if($cfg->{version} >= 0.4){
@@ -188,9 +188,12 @@ helper getnewTool => sub {
          push(@$gcode, 
             $g->comment(" special to get endmill shaft and move to center"),
             $g->fast($slot->{posX}, $slot->{posY}, 20),                 # Move to end of endmill shaft
+            $g->move( undef, undef, $slot->{posZ}+5, $atc->{feedRate}), # stop spindle position
+            $g->break(),                                                # Stop spindle rotation
             $g->move( undef, undef, $slot->{posZ}, $atc->{feedRate}),   # get endmill shaft
-            $g->move($g->calc_center_move($slot), 
-                        $slot->{posZ}, $atc->{feedRate}),               # move to center
+            $g->move($g->calc_center_move($slot->{deg}, $rad), 
+                        $slot->{posZ}, $atc->{feedRate}),               # move to calculated center of catchframe
+            $g->forward( $slot->{tourque}, $slot->{time}),              # FAST Forward PRELOAD screw
             $g->dwell($slot->{time}),                                   # short break to screw the nut
             $g->break(),                                                # stop spindle
             $g->fast($slot->{posX}, $slot->{posY}, $atc->{safetyHeight}),  # to a security high
@@ -241,10 +244,11 @@ helper putoldTool => sub {
    my $los  = $atc->{loose};
    my $car  = $cfg->{carousel};
    my $srv  = $car->{servo};
+   my $rad  = $cfg->{holder}->[ 0 ]->{posX}; # real radius of first slot
 
-   my $radius = 60;
-   my $torque_degrees = 70 + 10;
-   my $wrench_z = -9;
+   my $radius = 60; # radius of tourque circle
+   my $torque_degrees = $car->{torqueDegrees};
+   my $wrench_z = $atc->{nutZ};
    
    my $theta1   = 360;
    my $theta2   = 360 - $torque_degrees;
@@ -269,20 +273,31 @@ helper putoldTool => sub {
       $g->unblock( $atc->{slow}, 0.2),
       $self->arc(3, $theta1_back, $theta2_back, $radius),
 
-      $g->comment(" Move to slot position and run spindle slow"),
+      $g->comment(" Move to slot position minus 5.5mm"),
+      $g->fast(
+         $g->calc_center_move($slot->{deg}, ($rad-5.5)), 
+         $atc->{safetyHeight} 
+      ),
+      $g->forward( $atc->{slow} ),
+      $g->fast(undef, undef, $slot->{posZ}+4),
+      $g->move( undef, undef, $slot->{posZ}, $atc->{feedRate}),
+      $g->break(),
+      
+      # Move to center of catchframe
+      $g->move( 
+         $g->calc_center_move($slot->{deg}, $car->{centerRadius}),
+         $slot->{posZ}-0.5, 
+         $atc->{feedRate}
+      ),
 
-      $g->comment(" Move to slot position"),
-      $g->fast( undef, undef, $atc->{safetyHeight} ),
-      $g->fast( $slot->{posX}, $slot->{posY} ),
-      'G28.2 Z0',
-
-      $g->comment(" move down"),
-      $g->move( undef, undef, -1, 1000 ),
-      $g->dwell(1),
+      # Rotate fast backwards
       $g->backward( 9000, 0.1 ),
-      $g->dwell(1),
-      $g->backward( $atc->{slow} ),
 
+      # Move back to slot position
+      $g->fast(
+         $g->calc_center_move($slot->{deg}, $rad),
+      ),
+      $g->backward( $atc->{slow} ),
       $g->fast( undef, undef, $atc->{safetyHeight} ),
 
       $g->comment("-------------- END -------------------"),
