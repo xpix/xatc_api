@@ -186,7 +186,7 @@ sub unblock {
    return 
       $self->comment('UN-block spindle --'),
       $self->servo(),               # unblock with servo
-      $self->dwell($pause),
+      $self->dwell($pause*2),
       $self->jitter($jit->{speed}, $jit->{time}),  # jitter for accurate unblock
       $self->comment('----------------');
 }

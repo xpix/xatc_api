@@ -27,7 +27,7 @@ foreach my $row (@rows){
    $c++;
 }
 
-print join("\n", @rows);
+print join("\n", @rows)."\n";
 
 exit;
 
@@ -38,7 +38,7 @@ sub getToolChange {
    $row =~ s/[\r|\n]//sig;
 
    # construct url
-   my $request = sprintf('%s/%s/%d?text=1&touch=%d', $url, $row, $oldtoolnr, $touch);
+   my $request = sprintf('%s/%s/%d?text=1&touch=%d&time=%d', $url, $row, $oldtoolnr, $touch, time);
    my $xatc_gcode = "($request)\n" . get($request) . "\n";
 
    $oldtoolnr = $tool;
