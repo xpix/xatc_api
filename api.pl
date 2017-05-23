@@ -165,7 +165,7 @@ helper getnewTool => sub {
    my $rad  = $cfg->{holder}->[ 0 ]->{posX}; # real radius of first slot
    my $rct  = $car->{centerRadius};          # center radius of catchframe
 
-   my $radius = 60; # radius of tourque circle
+   my $radius = 60.5; # radius of tourque circle
    my $torque_degrees = $car->{torqueDegrees};
    my $wrench_z = $atc->{nutZ};
    
@@ -193,9 +193,9 @@ helper getnewTool => sub {
             #$g->break(),                                                # Stop spindle rotation
             $g->move( undef, undef, $slot->{posZ}, $atc->{feedRate}),   # get endmill shaft
             $g->move($g->calc_center_move($slot->{deg}, $rct), 
-                        ($slot->{posZ}-0.5), $atc->{feedRate}),               # move to calculated center of catchframe
+                        $slot->{posZ}, $atc->{feedRate}),               # move to calculated center of catchframe
 
-            $g->forward( $slot->{tourque}, 5),              # FAST Forward PRELOAD screw
+            $g->forward( 4000, 1),              # FAST Forward PRELOAD screw
 
             $g->fast($slot->{posX}, $slot->{posY}, $atc->{safetyHeight}),  # to a security high
          );
@@ -216,8 +216,8 @@ helper getnewTool => sub {
          $g->comment(" Move to wrench position"),
          $g->fast( 90, -5, $atc->{safetyHeight}),
          $g->fast( undef, undef, $wrench_z ),
-         $g->move( 59, 0, $wrench_z, 500), # catch collet nut
-         $g->move( 60, 0, $wrench_z, 1000), # catch collet nut
+         $g->move( ($radius+0.5), 0, $wrench_z, 500), # catch collet nut
+         $g->move( $radius, 0, $wrench_z, 1000), # catch collet nut
          
          # Magic move 
          $g->comment(" Magic move to screw nut collet"),
@@ -248,7 +248,7 @@ helper putoldTool => sub {
    my $srv  = $car->{servo};
    my $rad  = $cfg->{holder}->[ 0 ]->{posX}; # real radius of first slot
 
-   my $radius = 60; # radius of tourque circle
+   my $radius = 60.5; # radius of tourque circle
    my $torque_degrees = $car->{torqueDegrees}+30; # we have a backslash in wrench have to compansae this with +20 Degrees
    my $wrench_z = $atc->{nutZ};
    
@@ -265,8 +265,8 @@ helper putoldTool => sub {
       $g->comment(" Move to wrench position"),
       $g->fast( 90, -5, $atc->{safetyHeight}),
       $g->fast( undef, undef, $wrench_z ),
-      $g->move( 59, 0, $wrench_z, 500), # catch collet nut
-      $g->move( 60, 0, $wrench_z, 1000), # catch collet nut
+      $g->move( ($radius+0.5), 0, $wrench_z, 500), # catch collet nut
+      $g->move( $radius, 0, $wrench_z, 1000), # catch collet nut
       
       # Magic move 
       $g->comment(" Magic move to UN-screw nut collet"),
