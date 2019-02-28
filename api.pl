@@ -7,13 +7,12 @@ use File::Basename qw(dirname);
 use Data::Dumper;
 use Data::UUID;
 use Hash::Merge::Simple qw/ merge /; 
-use Mojo::JSON;
+use Mojo::JSON qw(decode_json encode_json);
 
 my $BIN = dirname($0);
 $Data::Dumper::Purity = 1;
 use constant PI    => 4 * atan2(1, 1);
 
-my $json = Mojo::JSON->new;
 my $gobj = Gcode->new({bin => $BIN});
 
 # App instructions
@@ -82,7 +81,7 @@ post '/config/:model/:control' => sub {
     my $model   = $self->stash('model') or return $self->error("No model parameter");
     my $modeldata = $gobj->config($model, $control);
 
-    my $userdata  = $json->decode($self->req->body) || '{}'
+    my $userdata  = decode_json($self->req->body) || '{}'
       or die "No config data to change";
 
     my $merged = merge $userdata, $modeldata->{config};
